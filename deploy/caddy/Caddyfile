@@ -1,0 +1,23 @@
+{$DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+
+	@agentApi path /api/agent/*
+	reverse_proxy @agentApi master:8080
+
+	@adminApi path /api/admin/*
+	reverse_proxy @adminApi master:8080
+
+	@installer path /scripts/* /downloads/*
+	reverse_proxy @installer master:8080
+
+	@masterHealth path /healthz
+	reverse_proxy @masterHealth master:8080
+
+	reverse_proxy frontend:3000
+}

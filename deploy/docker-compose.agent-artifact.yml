@@ -1,0 +1,11 @@
+services:
+  master:
+    environment:
+      MASTER_AGENT_BINARY_PATH: /opt/releases/vps-agent
+    volumes:
+      - type: bind
+        source: ${MASTER_AGENT_BINARY_HOST_PATH:?MASTER_AGENT_BINARY_HOST_PATH is required}
+        target: /opt/releases/vps-agent
+        read_only: true
+        bind:
+          create_host_path: false

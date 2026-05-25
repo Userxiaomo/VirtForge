@@ -1,0 +1,148 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vps
+      POSTGRES_USER: vps
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "vps", "-d", "vps"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+  master:
+    image: ${MASTER_IMAGE:-vps-master:local}
+    build:
+      context: ..
+      dockerfile: master/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MASTER_HTTP_BIND: 0.0.0.0:8080
+      MASTER_PUBLIC_BASE_URL: ${MASTER_PUBLIC_BASE_URL:?MASTER_PUBLIC_BASE_URL is required}
+      MASTER_INSTALLER_BASE_URL: ${MASTER_INSTALLER_BASE_URL:?MASTER_INSTALLER_BASE_URL is required}
+      MASTER_INSTALLER_CA_CERT_PATH: ${MASTER_INSTALLER_CA_CERT_PATH:-}
+      MASTER_INSTALLER_CLIENT_IDENTITY_PATH: ${MASTER_INSTALLER_CLIENT_IDENTITY_PATH:-}
+      MASTER_ADMIN_USERNAME: ${MASTER_ADMIN_USERNAME:?MASTER_ADMIN_USERNAME is required}
+      MASTER_ADMIN_TOKEN_HASH: ${MASTER_ADMIN_TOKEN_HASH:?MASTER_ADMIN_TOKEN_HASH is required}
+      MASTER_READONLY_TOKEN_HASH: ${MASTER_READONLY_TOKEN_HASH:-}
+      MASTER_AGENT_BINARY_PATH: ${MASTER_AGENT_BINARY_PATH:-}
+      MASTER_ADMIN_RATE_LIMIT_PER_MINUTE: ${MASTER_ADMIN_RATE_LIMIT_PER_MINUTE:-120}
+      MASTER_AGENT_REGISTRATION_RATE_LIMIT_PER_MINUTE: ${MASTER_AGENT_REGISTRATION_RATE_LIMIT_PER_MINUTE:-30}
+      MASTER_AGENT_RATE_LIMIT_PER_MINUTE: ${MASTER_AGENT_RATE_LIMIT_PER_MINUTE:-600}
+      MASTER_REQUEST_BODY_LIMIT_BYTES: ${MASTER_REQUEST_BODY_LIMIT_BYTES:-65536}
+      DATABASE_URL: postgres://vps:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/vps
+      RUST_LOG: vps_master=info,tower_http=info
+    expose:
+      - "8080"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "curl", "-q", "-fsS", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-vps-frontend:local}
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      master:
+        condition: service_healthy
+    environment:
+      MASTER_API_BASE_URL: http://master:8080
+      MASTER_FETCH_TIMEOUT_MS: ${MASTER_FETCH_TIMEOUT_MS:-30000}
+    expose:
+      - "3000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      frontend:
+        condition: service_healthy
+      master:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+    ports:
+      - "80:80"
+      - "443:443"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    pids_limit: 256
+    volumes:
+      - type: bind
+        source: ./caddy/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - caddy-data:/data
+      - caddy-config:/config
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,26 @@
+services:
+  master:
+    environment:
+      # In split-domain mTLS deployments, generated install commands download
+      # the script/binary from PANEL_DOMAIN but configure the agent to call
+      # AGENT_DOMAIN for /api/agent/*.
+      MASTER_PUBLIC_BASE_URL: https://${AGENT_DOMAIN:?AGENT_DOMAIN is required}
+      MASTER_INSTALLER_BASE_URL: https://${PANEL_DOMAIN:?PANEL_DOMAIN is required}
+
+  caddy:
+    environment:
+      PANEL_DOMAIN: ${PANEL_DOMAIN:?PANEL_DOMAIN is required}
+      AGENT_DOMAIN: ${AGENT_DOMAIN:?AGENT_DOMAIN is required}
+    volumes:
+      - type: bind
+        source: ./caddy/Caddyfile.mtls.example
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AGENT_CLIENT_CA_PATH:?AGENT_CLIENT_CA_PATH is required}
+        target: /etc/caddy/agent-client-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false

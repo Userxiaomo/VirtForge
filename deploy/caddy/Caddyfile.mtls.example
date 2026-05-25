@@ -1,0 +1,52 @@
+# Browser and installer entrypoint. Browser admin APIs stay same-origin through
+# Next.js, while installer/script downloads remain available without a client
+# certificate so operators can bootstrap a new node.
+{$PANEL_DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+
+	@adminApi path /api/admin/*
+	reverse_proxy @adminApi master:8080
+
+	@installer path /scripts/* /downloads/*
+	reverse_proxy @installer master:8080
+
+	@masterHealth path /healthz
+	reverse_proxy @masterHealth master:8080
+
+	@agentApi path /api/agent/*
+	respond @agentApi 404
+
+	reverse_proxy frontend:3000
+}
+
+# Dedicated agent API entrypoint. This site requires a client certificate before
+# proxying agent registration, heartbeat, task polling, task status, or task log
+# calls to master. Master still verifies bootstrap tokens and signed agent
+# requests; mTLS is an additional transport identity layer.
+{$AGENT_DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+
+	tls {
+		client_auth {
+			mode require_and_verify
+			trust_pool file /etc/caddy/agent-client-ca.pem
+		}
+	}
+
+	@agentApi path /api/agent/*
+	reverse_proxy @agentApi master:8080
+
+	respond 404
+}

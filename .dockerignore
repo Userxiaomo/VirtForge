@@ -1,0 +1,12 @@
+.git
+target
+dist
+frontend/.next
+frontend/node_modules
+frontend/out
+frontend/*.tsbuildinfo
+*.log
+*冲突副本*
+*conflict*
+.env
+.env.*

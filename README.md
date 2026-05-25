@@ -10,72 +10,105 @@
 - `postgres`：控制面数据库。
 - `caddy`：TLS 反向代理，统一对外提供面板、API、安装脚本和下载入口。
 
-## 快速开始
+## Linux VPS 部署
 
-### 本地开发
+正式部署面向 Linux VPS。主控不需要手动运行 Rust 或前端构建命令，控制面由 Docker Compose 启动，包含 `postgres`、`master`、`frontend` 和 `caddy`。
 
-```powershell
-cargo fmt --all
-cargo test --workspace
+部署入口在 `deploy/` 目录。正常情况下只需要编辑 `.env`，然后执行一个 Compose 启动命令：
+
+```bash
+cd deploy
+cp .env.example .env
+nano .env
+docker compose up -d --build
 ```
 
-前端单独开发：
+`--build` 是让 Compose 自动按仓库里的 Dockerfile 构建 `master` 和 `frontend` 镜像，不是手动执行 `cargo build` 或 `npm run build`。如果你已经有预构建镜像，在 `.env` 里设置 `MASTER_IMAGE`、`FRONTEND_IMAGE` 后可以去掉 `--build`。
 
-```powershell
-cd frontend
-npm install
-npm run lint
-npm run build
+### 1. VPS 前置条件
+
+- Linux VPS 一台，用于部署控制面。
+- 已安装 Docker Engine 和 Docker Compose plugin。
+- 域名 A/AAAA 记录指向这台 VPS。
+- 防火墙开放 `80/tcp` 和 `443/tcp`。
+
+### 2. 配置 `.env`
+
+从模板复制：
+
+```bash
+cd deploy
+cp .env.example .env
 ```
 
-本地运行前端时需要配置后端地址：
+编辑 `.env`：
 
-```powershell
-$env:MASTER_API_BASE_URL = "http://master:8080"
-npm run dev
+```bash
+nano .env
 ```
 
-## 部署
+至少需要设置：
 
-### 1. 准备环境变量
+- `DOMAIN`
+- `MASTER_PUBLIC_BASE_URL`
+- `MASTER_INSTALLER_BASE_URL`
+- `POSTGRES_PASSWORD`
+- `MASTER_ADMIN_USERNAME`
+- `MASTER_ADMIN_TOKEN_HASH`
 
-先生成管理员密码哈希：
+生成管理员登录 token 和 Argon2 哈希：
 
-```powershell
-$env:SECRET_TO_HASH = "replace-with-a-long-random-admin-token"
-cargo run -p vps-master --bin hash-secret
+```bash
+ADMIN_TOKEN="$(openssl rand -hex 32)"
+echo "Admin token: ${ADMIN_TOKEN}"
+SECRET_TO_HASH="${ADMIN_TOKEN}" docker compose run --rm --no-deps --build --entrypoint /usr/local/bin/hash-secret master
 ```
 
-然后准备控制面所需环境变量：
+把输出的 Argon2 PHC hash 填入 `.env` 的 `MASTER_ADMIN_TOKEN_HASH`。这个值包含 `$`，在 `.env` 中要用单引号包起来：
 
-```powershell
-$env:DOMAIN = "panel.example.com"
-$env:MASTER_PUBLIC_BASE_URL = "https://panel.example.com"
-$env:MASTER_INSTALLER_BASE_URL = "https://panel.example.com"
-$env:POSTGRES_PASSWORD = "<long-random-postgres-password>"
-$env:MASTER_ADMIN_USERNAME = "admin"
-$env:MASTER_ADMIN_TOKEN_HASH = "<argon2-hash-from-hash-secret>"
+```env
+MASTER_ADMIN_TOKEN_HASH='$argon2id$v=19$...'
 ```
 
-可选项：
+`Admin token` 是登录面板和调用管理 API 使用的明文口令，只显示这一次，自己保存好，不要写进 `.env`。
 
-- `MASTER_READONLY_TOKEN_HASH`
-- `MASTER_AGENT_BINARY_PATH`
-- `MASTER_INSTALLER_CA_CERT_PATH`
-- `MASTER_INSTALLER_CLIENT_IDENTITY_PATH`
-- `MASTER_FETCH_TIMEOUT_MS`
+### 3. 启动控制面
 
-### 2. 启动控制面
+在 `deploy/` 目录执行：
 
-```powershell
-docker compose -f deploy/docker-compose.yml up -d --build
+```bash
+docker compose up -d --build
 ```
 
-启动后通过 `https://panel.example.com` 访问面板。
+查看状态：
 
-### 3. 安装 agent
+```bash
+docker compose ps
+docker compose logs -f master
+```
 
-在 KVM 主机上安装 `agent`，推荐使用 master 生成的一次性 bootstrap token：
+启动后访问：
+
+```text
+https://panel.example.com
+```
+
+如果使用已经构建好的镜像：
+
+```env
+MASTER_IMAGE=your-registry/vps-master:tag
+FRONTEND_IMAGE=your-registry/vps-frontend:tag
+```
+
+然后启动：
+
+```bash
+docker compose up -d
+```
+
+### 4. 安装 KVM 节点 agent
+
+在面板中创建节点并生成一次性 bootstrap token，然后在 KVM 主机上安装 `agent`。生产环境通常直接使用面板生成的安装命令；手动执行时形如：
 
 ```bash
 sudo scripts/install-agent.sh \
@@ -104,6 +137,31 @@ sudo scripts/install-agent.sh \
 - 数据目录：`/var/lib/vps-agent`
 
 `executor-mode=libvirt` 时，主机需要具备 `/dev/kvm`、`virsh --connect qemu:///system`、`qemu-img` 和 `cloud-localds`。
+
+## 本地开发（可选）
+
+下面这些命令只用于开发和提交前校验，不是生产部署步骤。
+
+```powershell
+cargo fmt --all
+cargo test --workspace
+```
+
+前端单独开发：
+
+```powershell
+cd frontend
+npm install
+npm run lint
+npm run build
+```
+
+本地运行前端时需要配置后端地址：
+
+```powershell
+$env:MASTER_API_BASE_URL = "http://master:8080"
+npm run dev
+```
 
 ## 使用方式
 
@@ -152,4 +210,3 @@ bash scripts/kvm-host-smoke.sh
 - `docs/INSTALL.md`：完整部署和安装说明
 - `docs/DESIGN.md`：设计说明
 - `docs/SECURITY.md`：安全说明
-

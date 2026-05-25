@@ -8,7 +8,7 @@ COPY agent ./agent
 COPY master ./master
 COPY scripts ./scripts
 
-RUN cargo build --release -p vps-master --bin vps-master
+RUN cargo build --release -p vps-master --bin vps-master --bin hash-secret
 
 FROM debian:bookworm-slim AS runtime
 
@@ -19,6 +19,7 @@ RUN apt-get update \
 RUN useradd --system --create-home --shell /usr/sbin/nologin vps
 
 COPY --from=builder /app/target/release/vps-master /usr/local/bin/vps-master
+COPY --from=builder /app/target/release/hash-secret /usr/local/bin/hash-secret
 
 USER vps
 EXPOSE 8080

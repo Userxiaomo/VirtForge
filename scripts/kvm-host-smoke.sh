@@ -945,7 +945,6 @@ expected = {
     "ProtectHome": "yes",
     "ProtectHostname": "yes",
     "ProtectSystem": "strict",
-    "RestrictAddressFamilies": "AF_UNIX AF_INET AF_INET6 AF_NETLINK",
     "RestrictSUIDSGID": "yes",
     "UMask": "0077",
 }
@@ -957,6 +956,16 @@ for name, value in expected.items():
             file=sys.stderr,
         )
         sys.exit(1)
+
+expected_address_families = {"AF_UNIX", "AF_INET", "AF_INET6", "AF_NETLINK"}
+actual_address_families = set(properties.get("RestrictAddressFamilies", "").split())
+if actual_address_families != expected_address_families:
+    print(
+        "kvm-host-smoke: vps-agent systemd RestrictAddressFamilies must be "
+        + " ".join(sorted(expected_address_families)),
+        file=sys.stderr,
+    )
+    sys.exit(1)
 PY
 
     local extra_hardening_properties
@@ -2089,7 +2098,7 @@ require_qcow2_image() {
     path="$1"
     label="$2"
 
-    qemu_info="$(qemu-img info --output=json "$path" 2>/dev/null)" \
+    qemu_info="$(qemu-img info --force-share --output=json "$path" 2>/dev/null)" \
         || fail "qemu-img cannot read ${label}: ${path}"
     image_format="$(printf '%s' "$qemu_info" | python3 -c '
 import json

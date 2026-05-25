@@ -605,6 +605,51 @@ expect_agent_service_valid() {
     validate_agent_service
 }
 
+expect_agent_service_accepts_normalized_restrict_address_families_order() {
+    reset_smoke_state
+    systemctl() {
+        if [ "$#" -eq 3 ] && [ "$1" = "is-active" ] && [ "$2" = "--quiet" ] && [ "$3" = "vps-agent.service" ]; then
+            return 0
+        fi
+        if [ "$#" -eq 4 ] && [ "$1" = "show" ] && [ "$2" = "--property=ReadWritePaths" ] && [ "$3" = "--value" ] && [ "$4" = "vps-agent.service" ]; then
+            printf '%s %s\n' "${AGENT_CONFIG_PATH%/*}" "$DATA_DIR"
+            return 0
+        fi
+        if [ "$#" -eq 12 ] && [ "$1" = "show" ] && [ "${12}" = "vps-agent.service" ]; then
+            printf '%s\n' \
+                "NoNewPrivileges=yes" \
+                "MemoryDenyWriteExecute=yes" \
+                "PrivateTmp=yes" \
+                "ProtectClock=yes" \
+                "ProtectHome=yes" \
+                "ProtectHostname=yes" \
+                "ProtectSystem=strict" \
+                "RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX" \
+                "RestrictSUIDSGID=yes" \
+                "UMask=0077"
+            return 0
+        fi
+        if is_extra_hardening_show_call "$@"; then
+            print_default_extra_hardening_properties
+            return 0
+        fi
+        if [ "$#" -eq 4 ] && [ "$1" = "show" ] && [ "$2" = "--property=Environment" ] && [ "$3" = "--value" ] && [ "$4" = "vps-agent.service" ]; then
+            printf '%s\n' "RUST_LOG=vps_agent=info VPS_AGENT_CONFIG=${AGENT_CONFIG_PATH} PATH=${SAFE_SYSTEMD_PATH}"
+            return 0
+        fi
+        if [ "$#" -eq 4 ] && [ "$1" = "show" ] && [ "$2" = "--property=ExecStart" ] && [ "$3" = "--value" ] && [ "$4" = "vps-agent.service" ]; then
+            printf '%s\n' "{ path=${AGENT_BINARY_PATH} ; argv[]=${AGENT_BINARY_PATH} ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }"
+            return 0
+        fi
+        echo "unexpected systemctl call: $*" >&2
+        return 45
+    }
+
+    validate_agent_service
+
+    set_default_systemctl_active
+}
+
 expect_agent_service_invalid_when_inactive() {
     reset_smoke_state
     systemctl() {
@@ -2560,8 +2605,9 @@ expect_managed_disk_format_verification_accepts_qcow2_json() {
 
     qemu-img() {
         [ "$1" = "info" ] || return 54
-        [ "$2" = "--output=json" ] || return 55
-        [ "$3" = "$disk_path" ] || return 56
+        [ "$2" = "--force-share" ] || return 55
+        [ "$3" = "--output=json" ] || return 56
+        [ "$4" = "$disk_path" ] || return 57
         printf '{"format":"qcow2"}'
     }
 
@@ -5975,6 +6021,7 @@ expect_agent_doctor_rejects_mismatched_binary_sha256
 expect_agent_doctor_records_verified_sha256
 expect_agent_doctor_hides_failed_output
 expect_agent_service_valid
+expect_agent_service_accepts_normalized_restrict_address_families_order
 expect_agent_service_invalid_when_inactive
 expect_agent_service_hides_failed_output
 expect_agent_service_rejects_missing_writable_data_dir

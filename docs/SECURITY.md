@@ -329,10 +329,10 @@ The smoke harness also covers negative security cases:
   binary cannot be pinned. The download endpoint applies the same check before
   serving bytes, so a misconfigured artifact cannot become an unbounded public
   file read through `/downloads/vps-agent`.
-- `scripts/build-agent-binary.ps1` reports the exported artifact hash as
-  `agent_sha256` in its JSON output after the Docker build/export steps. This
-  gives operators an audit-friendly value to compare with the checksum master
-  later emits into generated install commands.
+- `scripts/build-agent-binary.sh` and `scripts/build-agent-binary.ps1` report
+  the exported artifact hash as `agent_sha256` in their JSON output after the
+  Docker build/export steps. This gives operators an audit-friendly value to
+  compare with the checksum master later emits into generated install commands.
 - The compose artifact override requires `MASTER_AGENT_BINARY_HOST_PATH`
   explicitly instead of defaulting to a repository-relative host path. That
   makes the operator choose the exact release artifact before container startup,

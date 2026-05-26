@@ -353,13 +353,13 @@ the proxy avoids duplicating the same headers in the Rust API and the Next.js
 panel while still covering admin APIs, agent APIs, installer script downloads,
 and agent binary downloads.
 
-The `scripts/build-agent-binary.ps1` helper builds the Linux agent artifact in
-Docker without shell command strings. It invokes `cargo build` and the later
-`install -m 0755` export as separate Docker argument arrays, so operator-side
-artifact generation follows the same no-`sh -c` boundary as the agent executor.
-After export it computes the file's SHA-256 with `Get-FileHash` and includes
-`agent_sha256` in the JSON output, giving operators a direct value to compare
-with the checksum master embeds in generated install commands.
+The `scripts/build-agent-binary.sh` and `scripts/build-agent-binary.ps1`
+helpers build the Linux agent artifact in Docker without shell command strings.
+They invoke `cargo build` and the later `install -m 0755` export as separate
+Docker calls, so operator-side artifact generation follows the same no-`sh -c`
+boundary as the agent executor. After export they compute the file's SHA-256
+and include `agent_sha256` in the JSON output, giving operators a direct value
+to compare with the checksum master embeds in generated install commands.
 The `scripts/build-docker-images.ps1` helper follows the same boundary for
 master/frontend Docker image builds: each `docker build` call is assembled as a
 PowerShell argument array instead of a shell-composed command string.

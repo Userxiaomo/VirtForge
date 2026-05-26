@@ -731,17 +731,29 @@ Do not use `VPS_AGENT_ALLOW_INSECURE_MASTER=1` for this. That switch is reserved
 
 To make the default download URL work, build a Linux agent binary and mount it into the master container:
 
+On a Linux deployment host:
+
+```bash
+bash scripts/build-agent-binary.sh
+```
+
+On Windows:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build-agent-binary.ps1
 ```
 
 This writes `dist/vps-agent`. The file is ignored by git because it is a build artifact.
-The helper runs Docker with PowerShell argument arrays and separates the Cargo
-build step from the artifact export step; it does not use `bash -c` or chained
-shell command strings.
+Both helpers run Docker with structured arguments and separate the Cargo build
+step from the artifact export step; they do not use `bash -c`, `sh -c`, or
+chained shell command strings.
 The JSON output includes `agent_sha256`, computed from the exported file after
 the Docker build and copy steps. Use that value when comparing the mounted
 artifact with generated installer commands:
+
+```bash
+bash scripts/build-agent-binary.sh
+```
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\build-agent-binary.ps1 |
@@ -750,6 +762,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-agent-binary.ps1 |
 ```
 
 Then include the artifact compose override:
+
+```bash
+export MASTER_AGENT_BINARY_HOST_PATH="$(pwd)/dist/vps-agent"
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.agent-artifact.yml up -d --build
+```
 
 ```powershell
 $env:MASTER_AGENT_BINARY_HOST_PATH = (Resolve-Path .\dist\vps-agent).Path

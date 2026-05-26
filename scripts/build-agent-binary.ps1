@@ -1,6 +1,7 @@
 param(
     [string] $OutputPath = "dist/vps-agent",
-    [string] $BuildNetwork = "host"
+    [string] $BuildNetwork = "host",
+    [string] $DockerPlatform = "linux/amd64"
 )
 
 $ErrorActionPreference = "Stop"
@@ -29,6 +30,7 @@ try {
     $buildArgs = @(
         "run",
         "--rm",
+        "--platform", $DockerPlatform,
         "--network", $BuildNetwork,
         "-v", "${repoRoot}:/work",
         "-v", "${targetDir}:/target",
@@ -46,6 +48,7 @@ try {
     $copyArgs = @(
         "run",
         "--rm",
+        "--platform", $DockerPlatform,
         "-v", "${targetDir}:/target:ro",
         "-v", "${outputDir}:/out",
         "rust:1.88-bookworm",
@@ -65,4 +68,5 @@ $agentSha256 = (Get-FileHash -Algorithm SHA256 -Path $resolvedOutput).Hash.ToLow
     agent_binary = $resolvedOutput
     agent_sha256 = $agentSha256
     build_network = $BuildNetwork
+    docker_platform = $DockerPlatform
 } | ConvertTo-Json

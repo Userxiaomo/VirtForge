@@ -57,6 +57,19 @@ if ! grep -Eq 'agent_sha256' "$repo_root/scripts/build-agent-binary.ps1"; then
     exit 1
 fi
 
+required_agent_binary_ps_markers=(
+    'DockerPlatform = "linux/amd64"'
+    '"--platform", $DockerPlatform'
+    'docker_platform = $DockerPlatform'
+)
+
+for marker in "${required_agent_binary_ps_markers[@]}"; do
+    if ! grep -Fq "$marker" "$repo_root/scripts/build-agent-binary.ps1"; then
+        echo "build-agent-binary.ps1 is missing expected marker: $marker" >&2
+        exit 1
+    fi
+done
+
 if grep -Eq '\b(bash|sh)\s+-c\b' "$repo_root/scripts/build-agent-binary.sh"; then
     echo "build-agent-binary.sh must not use bash -c or sh -c command strings" >&2
     exit 1
@@ -68,11 +81,15 @@ if grep -Eq '&&|\|\|' "$repo_root/scripts/build-agent-binary.sh"; then
 fi
 
 required_agent_binary_sh_markers=(
+    "docker_platform=\"linux/amd64\""
+    "--docker-platform"
+    "--platform \"\$docker_platform\""
     "cargo build --release -p vps-agent --bin vps-agent"
     "CARGO_TARGET_DIR=/target"
     "install -m 0755 /target/release/vps-agent /out/vps-agent"
     "sha256sum"
     "agent_sha256"
+    "docker_platform"
 )
 
 for marker in "${required_agent_binary_sh_markers[@]}"; do

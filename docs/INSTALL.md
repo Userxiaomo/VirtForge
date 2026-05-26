@@ -737,6 +737,13 @@ On a Linux deployment host:
 bash scripts/build-agent-binary.sh
 ```
 
+The Linux helper defaults to `--docker-platform linux/amd64`, matching Debian
+x86-64 KVM nodes. This default is independent of the control-plane host
+architecture: use it when the master runs on either ARM or amd64 but the agent
+nodes are amd64. If an ARM control host cannot run an amd64 Docker build, enable
+Docker binfmt/QEMU support for amd64, then rerun the helper. If your agent node
+is a different architecture, pass the matching Docker platform explicitly.
+
 On Windows:
 
 ```powershell
@@ -747,6 +754,11 @@ This writes `dist/vps-agent`. The file is ignored by git because it is a build a
 Both helpers run Docker with structured arguments and separate the Cargo build
 step from the artifact export step; they do not use `bash -c`, `sh -c`, or
 chained shell command strings.
+Both helpers default to a `linux/amd64` Docker platform for the agent artifact,
+so a release built on an ARM control host is still installable on amd64 nodes.
+The master currently serves one configured artifact from `/downloads/vps-agent`,
+so mixed amd64/arm64 agent fleets require publishing the artifact that matches
+the node being installed.
 The JSON output includes `agent_sha256`, computed from the exported file after
 the Docker build and copy steps. Use that value when comparing the mounted
 artifact with generated installer commands:

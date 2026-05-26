@@ -33,6 +33,20 @@ test("allows a marked same-origin panel mutation", () => {
   assert.equal(security.isAllowedPanelMutationRequest(request), true);
 });
 
+test("allows a marked HTTPS mutation behind an HTTP reverse proxy hop", () => {
+  const request = new Request("http://panel.example.com/api/session", {
+    headers: {
+      "Origin": "https://panel.example.com",
+      "Sec-Fetch-Site": "same-origin",
+      "X-Forwarded-Host": "panel.example.com",
+      "X-Forwarded-Proto": "https",
+      [security.panelMutationHeaderName]: security.panelMutationHeaderValue,
+    },
+  });
+
+  assert.equal(security.isAllowedPanelMutationRequest(request), true);
+});
+
 test("rejects a panel mutation without the panel marker header", () => {
   const request = mutationRequest({
     "Origin": "https://panel.example.com",

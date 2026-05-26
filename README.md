@@ -61,8 +61,10 @@ nano .env
 ```bash
 ADMIN_TOKEN="$(openssl rand -hex 32)"
 echo "Admin token: ${ADMIN_TOKEN}"
-SECRET_TO_HASH="${ADMIN_TOKEN}" docker compose run --rm --no-deps --build --entrypoint /usr/local/bin/hash-secret master
+SECRET_TO_HASH="${ADMIN_TOKEN}" docker compose run --rm --no-deps --build -e SECRET_TO_HASH --entrypoint /usr/local/bin/hash-secret master
 ```
+
+这条命令要在 `deploy/` 目录执行；`-e SECRET_TO_HASH` 会把当前 shell 中的一次性明文 token 转发给临时容器。
 
 把输出的 Argon2 PHC hash 填入 `.env` 的 `MASTER_ADMIN_TOKEN_HASH`。这个值包含 `$`，在 `.env` 中要用单引号包起来：
 

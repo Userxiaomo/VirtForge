@@ -88,7 +88,8 @@ test("VM panel passes active task reservation state into action availability", a
   const apiSource = await readFile(fileURLToPath(new URL("../lib/api.ts", import.meta.url)), "utf8");
 
   assert.match(apiSource, /last_task_status\?: TaskStatus \| null;/);
-  assert.match(source, /<Vms onAction=\{createVmAction\} vms=\{vms\} \/>/);
+  assert.match(source, /<Vms onAction=\{createVmAction\} text=\{text\} vms=\{vms\} \/>/);
+  assert.match(source, /message: vmActionConfirmationText\(action, vm, text\)/);
   assert.doesNotMatch(source, /activeTaskIds\.has\(vm\.last_task_id\)/);
   assert.match(source, /shouldAutoRefreshTaskStatus\(vm\.last_task_status\)/);
   assert.match(source, /availableVmActions\(\{ status: vm\.status, hasActiveTask \}\)/);

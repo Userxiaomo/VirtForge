@@ -40,10 +40,18 @@ import type {
 } from "../lib/api";
 import { formatAuditDetail } from "../lib/audit-detail";
 import { formatHostChecks } from "../lib/host-checks";
+import {
+  type I18nText,
+  type Language,
+  readStoredLanguage,
+  supportedLanguages,
+  translations,
+  writeStoredLanguage,
+} from "../lib/i18n";
 import { isCreateVmNodeSelectable, nodeCreateVmAdmissionLabel } from "../lib/node-readiness";
 import { panelMutationHeaderName, panelMutationHeaderValue } from "../lib/request-security";
 import { canCancelTaskStatus, shouldAutoRefreshTaskStatus } from "../lib/task-actions";
-import { availableVmActions, type VmAction, vmActionConfirmationMessage } from "../lib/vm-actions";
+import { availableVmActions, type VmAction } from "../lib/vm-actions";
 
 type View =
   | "dashboard"
@@ -57,26 +65,26 @@ type View =
   | "createVm"
   | "vms";
 
-const navItems: Array<{ id: View; label: string }> = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "nodes", label: "Nodes" },
-  { id: "plans", label: "Plans" },
-  { id: "images", label: "Images" },
-  { id: "ipPools", label: "IP Pools" },
-  { id: "install", label: "Install Agent" },
-  { id: "tasks", label: "Tasks" },
-  { id: "audit", label: "Audit" },
-  { id: "createVm", label: "Create VM" },
-  { id: "vms", label: "VMs" },
+const navItems: View[] = [
+  "dashboard",
+  "nodes",
+  "plans",
+  "images",
+  "ipPools",
+  "install",
+  "tasks",
+  "audit",
+  "createVm",
+  "vms",
 ];
 
-const vmActionConfig = {
-  "start-vm": { label: "Start", icon: Play },
-  "stop-vm": { label: "Stop", icon: Power },
-  "reboot-vm": { label: "Reboot", icon: RefreshCcw },
-  "reinstall-vm": { label: "Reinstall", icon: RefreshCcw },
-  "delete-vm": { label: "Delete", icon: Trash2 },
-} satisfies Record<VmAction, { label: string; icon: LucideIcon }>;
+const vmActionIcons = {
+  "start-vm": Play,
+  "stop-vm": Power,
+  "reboot-vm": RefreshCcw,
+  "reinstall-vm": RefreshCcw,
+  "delete-vm": Trash2,
+} satisfies Record<VmAction, LucideIcon>;
 
 type PanelApi = <T>(path: string, init?: RequestInit) => Promise<T>;
 
@@ -157,6 +165,7 @@ const taskColumns = [
 export function ControlPanel() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<View>("dashboard");
+  const [language, setLanguage] = useState<Language>(() => readStoredLanguage());
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
@@ -167,6 +176,13 @@ export function ControlPanel() {
   const [actionMessage, setActionMessage] = useState("");
   const [confirmation, setConfirmation] = useState<ConfirmationRequest | null>(null);
   const [loading, setLoading] = useState(false);
+  const text = translations[language];
+
+  function handleLanguageChange(nextLanguage: Language) {
+    setLanguage(nextLanguage);
+    writeStoredLanguage(nextLanguage);
+    document.documentElement.lang = nextLanguage;
+  }
 
   const api = useCallback(async <T,>(path: string, init?: RequestInit): Promise<T> => {
     const method = init?.method?.toUpperCase() ?? "GET";
@@ -295,7 +311,7 @@ export function ControlPanel() {
       setAuthenticated(true);
       await invalidatePanelData();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "login failed");
+      setMessage(error instanceof Error ? error.message : text.login.failed);
     } finally {
       setLoading(false);
     }
@@ -332,13 +348,13 @@ export function ControlPanel() {
 
   async function toggleNodeScheduling(node: NodeSummary) {
     const nextEnabled = !node.scheduling_enabled;
-    const label = nextEnabled ? "Enable Scheduling" : "Disable Scheduling";
+    const label = nextEnabled ? text.nodes.enableScheduling : text.nodes.disableScheduling;
     const confirmed = await confirmPanelAction({
       confirmLabel: label,
       danger: true,
       message: nextEnabled
-        ? `${node.name} will accept newly assigned VM tasks after this change.`
-        : `${node.name} will stop receiving new VM tasks. Already assigned work is unchanged.`,
+        ? text.confirm.enableScheduling(node.name)
+        : text.confirm.disableScheduling(node.name),
       title: label,
     });
     if (!confirmed) {
@@ -403,10 +419,10 @@ export function ControlPanel() {
   async function toggleImageEnabled(image: ImageDto) {
     const nextEnabled = !image.enabled;
     const confirmed = await confirmPanelAction({
-      confirmLabel: nextEnabled ? "Enable" : "Disable",
+      confirmLabel: nextEnabled ? text.common.enable : text.common.disable,
       danger: !nextEnabled,
-      message: `${image.name} will ${nextEnabled ? "be available for new VM tasks" : "stop being available for future create or reinstall tasks"}.`,
-      title: `${nextEnabled ? "Enable" : "Disable"} Image`,
+      message: text.confirm.imageAvailability(image.name, nextEnabled),
+      title: nextEnabled ? text.images.titleEnabled : text.images.titleDisabled,
     });
     if (!confirmed) {
       return;
@@ -451,10 +467,10 @@ export function ControlPanel() {
   async function togglePlanEnabled(plan: PlanDto) {
     const nextEnabled = !plan.enabled;
     const confirmed = await confirmPanelAction({
-      confirmLabel: nextEnabled ? "Enable" : "Disable",
+      confirmLabel: nextEnabled ? text.common.enable : text.common.disable,
       danger: !nextEnabled,
-      message: `${plan.name} will ${nextEnabled ? "be available for new VM tasks" : "stop being available for future VM tasks"}.`,
-      title: `${nextEnabled ? "Enable" : "Disable"} Plan`,
+      message: text.confirm.planAvailability(plan.name, nextEnabled),
+      title: nextEnabled ? text.plans.titleEnabled : text.plans.titleDisabled,
     });
     if (!confirmed) {
       return;
@@ -476,10 +492,10 @@ export function ControlPanel() {
     if (!selectedNodeId) return;
     const selectedNode = nodes.find((node) => node.id === selectedNodeId);
     const confirmed = await confirmPanelAction({
-      confirmLabel: "Generate",
+      confirmLabel: text.common.generate,
       danger: true,
-      message: `Generate a one-time bootstrap token for ${selectedNode?.name ?? selectedNodeId}? It will be shown in the install command and expires in 1 hour.`,
-      title: "Generate Install Command",
+      message: text.confirm.generateInstall(selectedNode?.name ?? selectedNodeId),
+      title: text.app.generateAgentCommand,
     });
     if (!confirmed) {
       return;
@@ -515,9 +531,15 @@ export function ControlPanel() {
     };
     const selectedNode = nodes.find((node) => node.id === vm.node_id);
     const confirmed = await confirmPanelAction({
-      confirmLabel: "Create VM",
-      message: `Queue create_vm for ${vm.name} on ${selectedNode?.name ?? vm.node_id} with ${vm.cpu_cores} CPU, ${vm.memory_mb} MB memory, and ${vm.disk_gb} GB disk.`,
-      title: "Create VM",
+      confirmLabel: text.nav.createVm,
+      message: text.confirm.createVm(
+        vm.name,
+        selectedNode?.name ?? vm.node_id,
+        vm.cpu_cores,
+        vm.memory_mb,
+        vm.disk_gb,
+      ),
+      title: text.nav.createVm,
     });
     if (!confirmed) {
       return;
@@ -534,12 +556,12 @@ export function ControlPanel() {
   }
 
   async function createVmAction(action: VmAction, vm: VmDto) {
-    const { label } = vmActionConfig[action];
+    const label = text.vmActions[action];
     const confirmed = await confirmPanelAction({
       confirmLabel: label,
       danger: action !== "start-vm",
-      message: vmActionConfirmationMessage(action, vm),
-      title: `${label} VM`,
+      message: vmActionConfirmationText(action, vm, text),
+      title: text.confirm.vmActionTitle(label),
     });
     if (!confirmed) {
       return;
@@ -556,10 +578,10 @@ export function ControlPanel() {
 
   async function cancelTask(task: TaskDto) {
     const confirmed = await confirmPanelAction({
-      confirmLabel: "Cancel Task",
+      confirmLabel: text.tasks.cancel,
       danger: true,
-      message: `Cancel ${task.kind.type} task? This only applies before host work starts.`,
-      title: "Cancel Task",
+      message: text.confirm.cancelTask(task.kind.type),
+      title: text.tasks.cancel,
     });
     if (!confirmed) {
       return;
@@ -577,9 +599,9 @@ export function ControlPanel() {
 
   async function retryTask(task: TaskDto) {
     const confirmed = await confirmPanelAction({
-      confirmLabel: "Retry Task",
-      message: `Retry ${task.kind.type} task? This queues a new task from the terminal task payload.`,
-      title: "Retry Task",
+      confirmLabel: text.tasks.retry,
+      message: text.confirm.retryTask(task.kind.type),
+      title: text.tasks.retry,
     });
     if (!confirmed) {
       return;
@@ -606,6 +628,10 @@ export function ControlPanel() {
   }, [panelQuery.error, panelQuery.isError]);
 
   useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+
+  useEffect(() => {
     if (!selectedNodeId && nodes[0]) {
       setSelectedNodeId(nodes[0].id);
       return;
@@ -621,11 +647,11 @@ export function ControlPanel() {
         <form className="login-panel" onSubmit={login}>
           <div className="brand dark">
             <ShieldCheck aria-hidden="true" />
-            <span>VPS Master</span>
+            <span>{text.app.brand}</span>
           </div>
-          <h1>Admin Login</h1>
+          <h1>{text.login.title}</h1>
           <label>
-            Username
+            {text.login.username}
             <input
               autoComplete="username"
               onChange={(event) => setUsername(event.target.value)}
@@ -634,7 +660,7 @@ export function ControlPanel() {
             />
           </label>
           <label>
-            Password
+            {text.login.password}
             <input
               autoComplete="current-password"
               onChange={(event) => setPassword(event.target.value)}
@@ -644,7 +670,7 @@ export function ControlPanel() {
           </label>
           <button className="primary" disabled={loading} type="submit">
             <ShieldCheck aria-hidden="true" />
-            Sign in
+            {text.login.submit}
           </button>
           {message ? <p className="error">{message}</p> : null}
         </form>
@@ -657,35 +683,49 @@ export function ControlPanel() {
       <aside className="sidebar">
         <div className="brand">
           <Activity aria-hidden="true" />
-          <span>VPS Master</span>
+          <span>{text.app.brand}</span>
         </div>
-        <nav aria-label="Primary">
+        <nav aria-label={text.dashboard.overview}>
           {navItems.map((item) => (
             <button
-              className={item.id === view ? "active" : ""}
-              key={item.id}
-              onClick={() => setView(item.id)}
+              className={item === view ? "active" : ""}
+              key={item}
+              onClick={() => setView(item)}
               type="button"
             >
-              {item.label}
+              {titleFor(item, text)}
             </button>
           ))}
         </nav>
+        <label className="language-picker">
+          <span>{text.language.label}</span>
+          <select
+            aria-label={text.language.ariaLabel}
+            onChange={(event) => handleLanguageChange(event.target.value as Language)}
+            value={language}
+          >
+            {supportedLanguages.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <button className="ghost logout" onClick={logout} type="button">
           <LogOut aria-hidden="true" />
-          Sign out
+          {text.app.signOut}
         </button>
       </aside>
 
       <section className="content">
         <header className="topbar">
           <div>
-            <p className="eyebrow">MVP Operations</p>
-            <h1>{titleFor(view)}</h1>
+            <p className="eyebrow">{text.app.eyebrow}</p>
+            <h1>{titleFor(view, text)}</h1>
           </div>
           <button className="primary" onClick={() => setView("install")} type="button">
             <ClipboardPlus aria-hidden="true" />
-            Generate Agent Command
+            {text.app.generateAgentCommand}
           </button>
         </header>
 
@@ -696,18 +736,21 @@ export function ControlPanel() {
             nodes={nodes}
             pendingTasks={pendingTasks}
             runningVms={runningVms.length}
+            text={text}
             tasks={tasks}
             vms={vms}
           />
         ) : null}
         {view === "nodes" ? (
-          <Nodes nodes={nodes} onCreate={createNode} onToggleScheduling={toggleNodeScheduling} />
+          <Nodes nodes={nodes} onCreate={createNode} onToggleScheduling={toggleNodeScheduling} text={text} />
         ) : null}
-        {view === "plans" ? <Plans plans={plans} onCreate={createPlan} onToggleEnabled={togglePlanEnabled} /> : null}
+        {view === "plans" ? (
+          <Plans plans={plans} onCreate={createPlan} onToggleEnabled={togglePlanEnabled} text={text} />
+        ) : null}
         {view === "images" ? (
-          <Images images={images} onCreate={createImage} onToggleEnabled={toggleImageEnabled} />
+          <Images images={images} onCreate={createImage} onToggleEnabled={toggleImageEnabled} text={text} />
         ) : null}
-        {view === "ipPools" ? <IpPools ipPools={ipPools} onCreate={createIpPool} /> : null}
+        {view === "ipPools" ? <IpPools ipPools={ipPools} onCreate={createIpPool} text={text} /> : null}
         {view === "install" ? (
           <InstallAgent
             install={install}
@@ -715,6 +758,7 @@ export function ControlPanel() {
             onGenerate={generateInstall}
             selectedNodeId={selectedNodeId}
             setSelectedNodeId={selectInstallNode}
+            text={text}
           />
         ) : null}
         {view === "tasks" ? (
@@ -726,19 +770,21 @@ export function ControlPanel() {
             onSelectTask={loadTaskLogs}
             selectedTaskId={selectedTaskId}
             tasks={tasks}
+            text={text}
           />
         ) : null}
-        {view === "audit" ? <AuditLogs auditLogs={auditLogs} /> : null}
+        {view === "audit" ? <AuditLogs auditLogs={auditLogs} text={text} /> : null}
         {view === "createVm" ? (
-          <CreateVm images={images} ipPools={ipPools} nodes={nodes} onCreate={createVm} plans={plans} />
+          <CreateVm images={images} ipPools={ipPools} nodes={nodes} onCreate={createVm} plans={plans} text={text} />
         ) : null}
-        {view === "vms" ? <Vms onAction={createVmAction} vms={vms} /> : null}
+        {view === "vms" ? <Vms onAction={createVmAction} text={text} vms={vms} /> : null}
       </section>
       {confirmation ? (
         <ConfirmationDialog
           onCancel={() => resolveConfirmation(false)}
           onProceed={() => resolveConfirmation(true)}
           request={confirmation}
+          text={text}
         />
       ) : null}
     </main>
@@ -749,10 +795,12 @@ function ConfirmationDialog({
   onCancel,
   onProceed,
   request,
+  text,
 }: {
   onCancel: () => void;
   onProceed: () => void;
   request: ConfirmationRequest;
+  text: I18nText;
 }) {
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -781,7 +829,7 @@ function ConfirmationDialog({
         <p id="confirmation-message">{request.message}</p>
         <div className="dialog-actions">
           <button className="ghost" onClick={onCancel} ref={cancelButtonRef} type="button">
-            Cancel
+            {text.common.cancel}
           </button>
           <button
             className={request.danger ? "primary danger-button" : "primary"}
@@ -800,25 +848,27 @@ function Dashboard({
   nodes,
   pendingTasks,
   runningVms,
+  text,
   tasks,
   vms,
 }: {
   nodes: NodeSummary[];
   pendingTasks: number;
   runningVms: number;
+  text: I18nText;
   tasks: TaskDto[];
   vms: VmDto[];
 }) {
   const stats = [
-    { label: "Nodes", value: nodes.length, icon: Server },
-    { label: "VMs", value: vms.length, icon: Boxes },
-    { label: "Running VMs", value: runningVms, icon: Activity },
-    { label: "Pending Tasks", value: pendingTasks, icon: ListChecks },
+    { label: text.nav.nodes, value: nodes.length, icon: Server },
+    { label: text.nav.vms, value: vms.length, icon: Boxes },
+    { label: text.dashboard.runningVms, value: runningVms, icon: Activity },
+    { label: text.dashboard.pendingTasks, value: pendingTasks, icon: ListChecks },
   ];
 
   return (
     <>
-      <section className="stats" aria-label="Overview">
+      <section className="stats" aria-label={text.dashboard.overview}>
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
@@ -831,11 +881,11 @@ function Dashboard({
         })}
       </section>
       <section className="workbench">
-        <Panel title="Recent Tasks">
-          <TaskTable tasks={tasks.slice(0, 5)} />
+        <Panel title={text.dashboard.recentTasks}>
+          <TaskTable tasks={tasks.slice(0, 5)} text={text} />
         </Panel>
-        <Panel title="Node Health">
-          <NodeTable nodes={nodes.slice(0, 5)} />
+        <Panel title={text.dashboard.nodeHealth}>
+          <NodeTable nodes={nodes.slice(0, 5)} text={text} />
         </Panel>
       </section>
     </>
@@ -846,10 +896,12 @@ function Nodes({
   nodes,
   onCreate,
   onToggleScheduling,
+  text,
 }: {
   nodes: NodeSummary[];
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onToggleScheduling: (node: NodeSummary) => void;
+  text: I18nText;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? nodes[0];
@@ -860,92 +912,92 @@ function Nodes({
         <input name="name" placeholder="node-01" />
         <button className="primary" type="submit">
           <Server aria-hidden="true" />
-          Add Node
+          {text.nodes.add}
         </button>
       </form>
-      <Panel title="Nodes">
-        <NodeTable nodes={nodes} onSelect={setSelectedNodeId} selectedNodeId={selectedNode?.id} />
+      <Panel title={text.nav.nodes}>
+        <NodeTable nodes={nodes} onSelect={setSelectedNodeId} selectedNodeId={selectedNode?.id} text={text} />
       </Panel>
-      <Panel title="Node Detail">
+      <Panel title={text.nodes.detail}>
         {selectedNode ? (
           <>
             <div className="toolbar">
               <button className="ghost" onClick={() => onToggleScheduling(selectedNode)} type="button">
                 <Power aria-hidden="true" />
-                {selectedNode.scheduling_enabled ? "Disable Scheduling" : "Enable Scheduling"}
+                {selectedNode.scheduling_enabled ? text.nodes.disableScheduling : text.nodes.enableScheduling}
               </button>
             </div>
             <dl className="detail-grid">
               <div>
-                <dt>Name</dt>
+                <dt>{text.common.name}</dt>
                 <dd>{selectedNode.name}</dd>
               </div>
               <div>
-                <dt>Status</dt>
+                <dt>{text.common.status}</dt>
                 <dd>{selectedNode.status}</dd>
               </div>
               <div>
-                <dt>Scheduling</dt>
-                <dd>{selectedNode.scheduling_enabled ? "enabled" : "disabled"}</dd>
+                <dt>{text.nodes.scheduling}</dt>
+                <dd>{selectedNode.scheduling_enabled ? text.common.enabled : text.common.disabled}</dd>
               </div>
               <div>
-                <dt>Agent</dt>
-                <dd>{selectedNode.agent_version ?? "not registered"}</dd>
+                <dt>{text.nodes.agent}</dt>
+                <dd>{selectedNode.agent_version ?? text.common.notRegistered}</dd>
               </div>
               <div>
-                <dt>Libvirt</dt>
+                <dt>{text.nodes.libvirt}</dt>
                 <dd>{selectedNode.libvirt_status}</dd>
               </div>
               <div>
-                <dt>Last Seen</dt>
+                <dt>{text.nodes.lastSeen}</dt>
                 <dd>
                   {selectedNode.last_seen_at
                     ? new Date(selectedNode.last_seen_at).toLocaleString()
-                    : "never"}
+                    : text.common.never}
                 </dd>
               </div>
               <div>
-                <dt>CPU</dt>
+                <dt>{text.nodes.cpu}</dt>
                 <dd>
                   {selectedNode.cpu_total > 0
-                    ? `${selectedNode.committed_cpu} / ${selectedNode.cpu_total} cores committed`
-                    : "not reported"}
+                    ? text.nodes.coresCommitted(selectedNode.committed_cpu, selectedNode.cpu_total)
+                    : text.common.notReported}
                 </dd>
               </div>
               <div>
-                <dt>Memory</dt>
+                <dt>{text.nodes.memory}</dt>
                 <dd>
-                  {formatCapacity(selectedNode.memory_used, selectedNode.memory_total)}
+                  {formatCapacity(selectedNode.memory_used, selectedNode.memory_total, text)}
                   {selectedNode.memory_total > 0
-                    ? `, ${selectedNode.committed_memory_mb} MB committed`
+                    ? `, ${text.nodes.mbCommitted(selectedNode.committed_memory_mb)}`
                     : ""}
                 </dd>
               </div>
               <div>
-                <dt>Data Disk</dt>
+                <dt>{text.nodes.dataDisk}</dt>
                 <dd>
-                  {formatCapacity(selectedNode.disk_used, selectedNode.disk_total)}
+                  {formatCapacity(selectedNode.disk_used, selectedNode.disk_total, text)}
                   {selectedNode.disk_total > 0
-                    ? `, ${selectedNode.committed_disk_gb} GB committed`
+                    ? `, ${text.nodes.gbCommitted(selectedNode.committed_disk_gb)}`
                     : ""}
                 </dd>
               </div>
               <div>
-                <dt>Managed VMs</dt>
+                <dt>{text.nodes.managedVms}</dt>
                 <dd>{selectedNode.vm_count}</dd>
               </div>
               <div className="wide">
-                <dt>Host Checks</dt>
+                <dt>{text.nodes.hostChecks}</dt>
                 <dd>{formatHostChecks(selectedNode.host_checks)}</dd>
               </div>
               <div className="wide">
-                <dt>Node ID</dt>
+                <dt>{text.nodes.nodeId}</dt>
                 <dd>{selectedNode.id}</dd>
               </div>
             </dl>
           </>
         ) : (
-          <div className="empty">Select a node.</div>
+          <div className="empty">{text.nodes.select}</div>
         )}
       </Panel>
     </section>
@@ -955,33 +1007,35 @@ function Nodes({
 function IpPools({
   ipPools,
   onCreate,
+  text,
 }: {
   ipPools: IpPoolDto[];
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  text: I18nText;
 }) {
   return (
     <section className="stack">
       <form className="form-grid" onSubmit={onCreate}>
         <label>
-          Name
+          {text.common.name}
           <input name="name" pattern="[A-Za-z0-9_.-]{1,80}" required />
         </label>
         <label>
-          CIDR
+          {text.ipPools.cidr}
           <input defaultValue="192.0.2.0/29" name="cidr" required />
         </label>
         <label>
-          Gateway
+          {text.ipPools.gateway}
           <input defaultValue="192.0.2.1" name="gateway_ip" required />
         </label>
         <button className="primary" type="submit">
           <Boxes aria-hidden="true" />
-          Add Pool
+          {text.ipPools.add}
         </button>
       </form>
-      <Panel title="IP Pools">
+      <Panel title={text.nav.ipPools}>
         {ipPools.length === 0 ? (
-          <div className="empty">No IP pools yet.</div>
+          <div className="empty">{text.ipPools.empty}</div>
         ) : (
           <div className="table">
             {ipPools.map((pool) => (
@@ -989,7 +1043,7 @@ function IpPools({
                 <span>{pool.name}</span>
                 <span>{pool.cidr}</span>
                 <span>{pool.gateway_ip}</span>
-                <span>{pool.allocated_count} allocated</span>
+                <span>{text.ipPools.allocated(pool.allocated_count)}</span>
               </div>
             ))}
           </div>
@@ -1003,44 +1057,46 @@ function Images({
   images,
   onCreate,
   onToggleEnabled,
+  text,
 }: {
   images: ImageDto[];
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onToggleEnabled: (image: ImageDto) => void;
+  text: I18nText;
 }) {
   return (
     <section className="stack">
       <form className="form-grid" onSubmit={onCreate}>
         <label>
-          Name
+          {text.common.name}
           <input name="name" pattern="[A-Za-z0-9 _-]{1,80}" required />
         </label>
         <label>
-          File Name
+          {text.images.fileName}
           <input defaultValue="debian-12.qcow2" name="file_name" pattern="[A-Za-z0-9_.-]{1,80}" required />
         </label>
         <label className="checkbox-line">
           <input defaultChecked name="enabled" type="checkbox" />
-          Enabled
+          {text.common.enabled}
         </label>
         <button className="primary" type="submit">
           <ImageIcon aria-hidden="true" />
-          Add Image
+          {text.images.add}
         </button>
       </form>
-      <Panel title="Images">
+      <Panel title={text.nav.images}>
         {images.length === 0 ? (
-          <div className="empty">No images registered.</div>
+          <div className="empty">{text.images.empty}</div>
         ) : (
           <div className="table">
             {images.map((image) => (
               <div className="row image-row" key={image.id}>
                 <span>{image.name}</span>
                 <span>{image.file_name}</span>
-                <span>{image.enabled ? "enabled" : "disabled"}</span>
+                <span>{image.enabled ? text.common.enabled : text.common.disabled}</span>
                 <button className="ghost" onClick={() => onToggleEnabled(image)} type="button">
                   {image.enabled ? <Ban aria-hidden="true" /> : <Power aria-hidden="true" />}
-                  {image.enabled ? "Disable" : "Enable"}
+                  {image.enabled ? text.common.disable : text.common.enable}
                 </button>
               </div>
             ))}
@@ -1055,59 +1111,59 @@ function Plans({
   onCreate,
   onToggleEnabled,
   plans,
+  text,
 }: {
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onToggleEnabled: (plan: PlanDto) => void;
   plans: PlanDto[];
+  text: I18nText;
 }) {
   return (
     <section className="stack">
       <form className="form-grid" onSubmit={onCreate}>
         <label>
-          Name
+          {text.common.name}
           <input name="name" pattern="[A-Za-z0-9 _-]{1,80}" required />
         </label>
         <label>
-          Slug
+          {text.plans.slug}
           <input defaultValue="small-1" name="slug" pattern="[A-Za-z0-9_-]{1,80}" required />
         </label>
         <label>
-          CPU
+          {text.nodes.cpu}
           <input defaultValue={1} min={1} name="cpu_cores" type="number" />
         </label>
         <label>
-          Memory MB
+          {text.plans.memoryMb}
           <input defaultValue={512} min={128} name="memory_mb" type="number" />
         </label>
         <label>
-          Disk GB
+          {text.plans.diskGb}
           <input defaultValue={10} min={1} name="disk_gb" type="number" />
         </label>
         <label className="checkbox-line">
           <input defaultChecked name="enabled" type="checkbox" />
-          Enabled
+          {text.common.enabled}
         </label>
         <button className="primary" type="submit">
           <Boxes aria-hidden="true" />
-          Add Plan
+          {text.plans.add}
         </button>
       </form>
-      <Panel title="Plans">
+      <Panel title={text.nav.plans}>
         {plans.length === 0 ? (
-          <div className="empty">No plans configured.</div>
+          <div className="empty">{text.plans.empty}</div>
         ) : (
           <div className="table">
             {plans.map((plan) => (
               <div className="row plan-row" key={plan.id}>
                 <span>{plan.name}</span>
                 <span>{plan.slug}</span>
-                <span>
-                  {plan.cpu_cores} CPU / {plan.memory_mb} MB / {plan.disk_gb} GB
-                </span>
-                <span>{plan.enabled ? "enabled" : "disabled"}</span>
+                <span>{text.plans.sizing(plan.cpu_cores, plan.memory_mb, plan.disk_gb)}</span>
+                <span>{plan.enabled ? text.common.enabled : text.common.disabled}</span>
                 <button className="ghost" onClick={() => onToggleEnabled(plan)} type="button">
                   {plan.enabled ? <Ban aria-hidden="true" /> : <Power aria-hidden="true" />}
-                  {plan.enabled ? "Disable" : "Enable"}
+                  {plan.enabled ? text.common.disable : text.common.enable}
                 </button>
               </div>
             ))}
@@ -1124,22 +1180,24 @@ function InstallAgent({
   onGenerate,
   selectedNodeId,
   setSelectedNodeId,
+  text,
 }: {
   install: BootstrapTokenResponse | null;
   nodes: NodeSummary[];
   onGenerate: (event: FormEvent<HTMLFormElement>) => void;
   selectedNodeId: string;
   setSelectedNodeId: (nodeId: string) => void;
+  text: I18nText;
 }) {
   return (
     <section className="stack">
       <form className="inline-form" onSubmit={onGenerate}>
         <select
-          aria-label="Agent install target node"
+          aria-label={text.install.targetAriaLabel}
           onChange={(event) => setSelectedNodeId(event.target.value)}
           value={selectedNodeId}
         >
-          <option value="">Select node</option>
+          <option value="">{text.install.selectNode}</option>
           {nodes.map((node) => (
             <option key={node.id} value={node.id}>
               {node.name}
@@ -1148,10 +1206,10 @@ function InstallAgent({
         </select>
         <button className="primary" disabled={!selectedNodeId} type="submit">
           <ClipboardPlus aria-hidden="true" />
-          Generate
+          {text.common.generate}
         </button>
       </form>
-      <Panel title="Install Command">
+      <Panel title={text.install.commandTitle}>
         {install ? (
           <div className="command-box">
             <code>{install.install_command}</code>
@@ -1161,11 +1219,11 @@ function InstallAgent({
               type="button"
             >
               <Clipboard aria-hidden="true" />
-              Copy
+              {text.common.copy}
             </button>
           </div>
         ) : (
-          <div className="empty">No command generated.</div>
+          <div className="empty">{text.install.noCommand}</div>
         )}
       </Panel>
     </section>
@@ -1180,6 +1238,7 @@ function Tasks({
   onSelectTask,
   selectedTaskId,
   tasks,
+  text,
 }: {
   logs: TaskLogDto[];
   message: string;
@@ -1188,6 +1247,7 @@ function Tasks({
   onSelectTask: (taskId: string) => void;
   selectedTaskId: string;
   tasks: TaskDto[];
+  text: I18nText;
 }) {
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
   const taskErrorMessage = selectedTask?.error_message ?? "";
@@ -1196,15 +1256,15 @@ function Tasks({
 
   return (
     <section className="stack">
-      <Panel title="Tasks">
-        <TaskTable onSelect={onSelectTask} selectedTaskId={selectedTaskId} tasks={tasks} />
+      <Panel title={text.tasks.title}>
+        <TaskTable onSelect={onSelectTask} selectedTaskId={selectedTaskId} tasks={tasks} text={text} />
       </Panel>
-      <Panel title="Task Logs">
+      <Panel title={text.tasks.logs}>
         {canCancel ? (
           <div className="toolbar">
             <button className="ghost danger" onClick={() => onCancelTask(selectedTask)} type="button">
               <Ban aria-hidden="true" />
-              Cancel Task
+              {text.tasks.cancel}
             </button>
           </div>
         ) : null}
@@ -1212,15 +1272,15 @@ function Tasks({
           <div className="toolbar">
             <button className="ghost" onClick={() => onRetryTask(selectedTask)} type="button">
               <RefreshCcw aria-hidden="true" />
-              Retry Task
+              {text.tasks.retry}
             </button>
           </div>
         ) : null}
-        {!selectedTaskId ? <div className="empty">Select a task.</div> : null}
+        {!selectedTaskId ? <div className="empty">{text.tasks.select}</div> : null}
         {selectedTaskId && message ? <p className="error">{message}</p> : null}
-        {taskErrorMessage ? <p className="error" role="alert">Task failed: {taskErrorMessage}</p> : null}
+        {taskErrorMessage ? <p className="error" role="alert">{text.tasks.failed(taskErrorMessage)}</p> : null}
         {selectedTaskId && !message && !taskErrorMessage && logs.length === 0 ? (
-          <div className="empty">No logs for this task.</div>
+          <div className="empty">{text.tasks.noLogs}</div>
         ) : null}
         {logs.length > 0 ? (
           <div className="log-list">
@@ -1237,22 +1297,22 @@ function Tasks({
   );
 }
 
-function AuditLogs({ auditLogs }: { auditLogs: AuditLogDto[] }) {
+function AuditLogs({ auditLogs, text }: { auditLogs: AuditLogDto[]; text: I18nText }) {
   return (
-    <Panel title="Audit Logs">
+    <Panel title={text.audit.title}>
       {auditLogs.length === 0 ? (
-        <div className="empty">No audit entries yet.</div>
+        <div className="empty">{text.audit.empty}</div>
       ) : (
         <div className="table">
           {auditLogs.map((entry) => (
             <div className="row audit-row" key={entry.id}>
               <span>{new Date(entry.created_at).toLocaleString()}</span>
-              <span>{entry.request_id ?? "no request"}</span>
+              <span>{entry.request_id ?? text.audit.noRequest}</span>
               <span>{entry.actor_role}</span>
               <span>{entry.action}</span>
               <span>{entry.result}</span>
-              <span>{entry.node_id ?? "no node"}</span>
-              <span>{entry.task_id ?? "no task"}</span>
+              <span>{entry.node_id ?? text.audit.noNode}</span>
+              <span>{entry.task_id ?? text.audit.noTask}</span>
               <span>{formatAuditDetail(entry.detail)}</span>
             </div>
           ))}
@@ -1268,38 +1328,40 @@ function CreateVm({
   nodes,
   onCreate,
   plans,
+  text,
 }: {
   images: ImageDto[];
   ipPools: IpPoolDto[];
   nodes: NodeSummary[];
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   plans: PlanDto[];
+  text: I18nText;
 }) {
   const enabledImages = images.filter((image) => image.enabled);
   const enabledPlans = plans.filter((plan) => plan.enabled);
   const selectableNodes = nodes.filter((node) => isCreateVmNodeSelectable(node));
 
   return (
-    <Panel title="Create VM">
+    <Panel title={text.nav.createVm}>
       <form className="form-grid" onSubmit={onCreate}>
         <label>
-          Node
+          {text.createVm.node}
           <select name="node_id" required>
             {selectableNodes.map((node) => (
               <option key={node.id} value={node.id}>
-                {node.name} ({formatNodeCapacitySummary(node)}, {nodeCreateVmAdmissionLabel(node)})
+                {node.name} ({formatNodeCapacitySummary(node, text)}, {nodeCreateVmAdmissionLabel(node)})
               </option>
             ))}
           </select>
         </label>
         {nodes.length > 0 && selectableNodes.length === 0 ? (
           <div className="wide-field muted">
-            No node is online, heartbeating, schedulable, and available for create tasks.
+            {text.createVm.noReadyNodes}
           </div>
         ) : null}
         {nodes.some((node) => !isCreateVmNodeSelectable(node)) ? (
           <div className="wide-field muted">
-            Unready nodes:{" "}
+            {text.createVm.unreadyNodes}{" "}
             {nodes
               .filter((node) => !isCreateVmNodeSelectable(node))
               .map((node) => `${node.name} (${nodeCreateVmAdmissionLabel(node)})`)
@@ -1307,9 +1369,9 @@ function CreateVm({
           </div>
         ) : null}
         <label>
-          IP Pool
+          {text.createVm.ipPool}
           <select name="ip_pool_id">
-            <option value="">No reservation</option>
+            <option value="">{text.createVm.noReservation}</option>
             {ipPools.map((pool) => (
               <option key={pool.id} value={pool.id}>
                 {pool.name} ({pool.allocated_count})
@@ -1318,9 +1380,9 @@ function CreateVm({
           </select>
         </label>
         <label>
-          Plan
+          {text.createVm.plan}
           <select name="plan_id">
-            <option value="">Custom sizing</option>
+            <option value="">{text.createVm.customSizing}</option>
             {enabledPlans.map((plan) => (
               <option key={plan.id} value={plan.id}>
                 {plan.name} ({plan.cpu_cores} CPU / {plan.memory_mb} MB / {plan.disk_gb} GB)
@@ -1329,11 +1391,11 @@ function CreateVm({
           </select>
         </label>
         <label>
-          Name
+          {text.common.name}
           <input name="name" pattern="[A-Za-z0-9_-]{1,64}" required />
         </label>
         <label>
-          Image
+          {text.createVm.image}
           <select name="image" required>
             {enabledImages.map((image) => (
               <option key={image.id} value={image.file_name}>
@@ -1343,24 +1405,24 @@ function CreateVm({
           </select>
         </label>
         <label className="wide-field">
-          SSH Public Key
+          {text.createVm.sshPublicKey}
           <textarea name="ssh_public_key" placeholder="ssh-ed25519 AAAA..." rows={3} />
         </label>
         <label>
-          CPU
+          {text.nodes.cpu}
           <input defaultValue={1} min={1} name="cpu_cores" type="number" />
         </label>
         <label>
-          Memory MB
+          {text.plans.memoryMb}
           <input defaultValue={512} min={128} name="memory_mb" type="number" />
         </label>
         <label>
-          Disk GB
+          {text.plans.diskGb}
           <input defaultValue={10} min={1} name="disk_gb" type="number" />
         </label>
         <button className="primary" disabled={selectableNodes.length === 0 || enabledImages.length === 0} type="submit">
           <Play aria-hidden="true" />
-          Create Task
+          {text.createVm.createTask}
         </button>
       </form>
     </Panel>
@@ -1369,15 +1431,17 @@ function CreateVm({
 
 function Vms({
   onAction,
+  text,
   vms,
 }: {
   onAction: (action: VmAction, vm: VmDto) => void;
+  text: I18nText;
   vms: VmDto[];
 }) {
   return (
-    <Panel title="VMs">
+    <Panel title={text.nav.vms}>
       {vms.length === 0 ? (
-        <div className="empty">No VM records yet.</div>
+        <div className="empty">{text.vms.empty}</div>
       ) : (
         <div className="table">
           {vms.map((vm) => {
@@ -1390,11 +1454,12 @@ function Vms({
               <div className="row vm-row" key={vm.id}>
                 <span>{vm.name}</span>
                 <span>{vm.status}</span>
-                <span>{vm.assigned_ip ?? "no ip"}</span>
-                <span>{vm.ssh_public_key ? "ssh key" : "no ssh key"}</span>
+                <span>{vm.assigned_ip ?? text.vms.noIp}</span>
+                <span>{vm.ssh_public_key ? text.vms.sshKey : text.vms.noSshKey}</span>
                 <div className="actions">
                   {actions.map((action) => {
-                    const { icon: Icon, label } = vmActionConfig[action];
+                    const Icon = vmActionIcons[action];
+                    const label = text.vmActions[action];
                     return (
                       <button
                         className="icon-button"
@@ -1408,7 +1473,7 @@ function Vms({
                     );
                   })}
                   {actions.length === 0 ? (
-                    <span className="muted">{hasActiveTask ? "Task active" : "No actions"}</span>
+                    <span className="muted">{hasActiveTask ? text.vms.taskActive : text.vms.noActions}</span>
                   ) : null}
                 </div>
               </div>
@@ -1433,10 +1498,12 @@ function NodeTable({
   nodes,
   onSelect,
   selectedNodeId,
+  text,
 }: {
   nodes: NodeSummary[];
   onSelect?: (nodeId: string) => void;
   selectedNodeId?: string;
+  text: I18nText;
 }) {
   const table = useReactTable({
     columns: nodeColumns,
@@ -1445,7 +1512,7 @@ function NodeTable({
     getRowId: (node) => node.id,
   });
 
-  if (nodes.length === 0) return <div className="empty">No registered nodes.</div>;
+  if (nodes.length === 0) return <div className="empty">{text.nodes.empty}</div>;
   return (
     <div className="table">
       {table.getRowModel().rows.map((row) => (
@@ -1468,10 +1535,12 @@ function TaskTable({
   onSelect,
   selectedTaskId,
   tasks,
+  text,
 }: {
   onSelect?: (taskId: string) => void;
   selectedTaskId?: string;
   tasks: TaskDto[];
+  text: I18nText;
 }) {
   const table = useReactTable({
     columns: taskColumns,
@@ -1480,7 +1549,7 @@ function TaskTable({
     getRowId: (task) => task.id,
   });
 
-  if (tasks.length === 0) return <div className="empty">No tasks yet.</div>;
+  if (tasks.length === 0) return <div className="empty">{text.tasks.empty}</div>;
   return (
     <div className="table">
       {table.getRowModel().rows.map((row) => (
@@ -1499,28 +1568,22 @@ function TaskTable({
   );
 }
 
-function titleFor(view: View) {
-  switch (view) {
-    case "dashboard":
-      return "Dashboard";
-    case "nodes":
-      return "Nodes";
-    case "plans":
-      return "Plans";
-    case "images":
-      return "Images";
-    case "ipPools":
-      return "IP Pools";
-    case "install":
-      return "Install Agent";
-    case "tasks":
-      return "Tasks";
-    case "audit":
-      return "Audit";
-    case "createVm":
-      return "Create VM";
-    case "vms":
-      return "VMs";
+function titleFor(view: View, text: I18nText) {
+  return text.nav[view];
+}
+
+function vmActionConfirmationText(action: VmAction, vm: VmDto, text: I18nText) {
+  switch (action) {
+    case "start-vm":
+      return text.confirm.vmActionMessage["start-vm"](vm.name);
+    case "stop-vm":
+      return text.confirm.vmActionMessage["stop-vm"](vm.name);
+    case "reboot-vm":
+      return text.confirm.vmActionMessage["reboot-vm"](vm.name);
+    case "reinstall-vm":
+      return text.confirm.vmActionMessage["reinstall-vm"](vm.name, vm.id);
+    case "delete-vm":
+      return text.confirm.vmActionMessage["delete-vm"](vm.name, vm.id);
   }
 }
 
@@ -1551,18 +1614,21 @@ function isUnauthorizedError(error: unknown) {
   return errorMessage(error) === "unauthorized";
 }
 
-function formatCapacity(used: number, total: number) {
-  if (total <= 0) return "not reported";
+function formatCapacity(used: number, total: number, text: I18nText) {
+  if (total <= 0) return text.common.notReported;
   return `${formatBytes(used)} / ${formatBytes(total)}`;
 }
 
-function formatNodeCapacitySummary(node: NodeSummary) {
-  const cpu = node.cpu_total > 0 ? `${node.committed_cpu}/${node.cpu_total} CPU` : "CPU unknown";
+function formatNodeCapacitySummary(node: NodeSummary, text?: I18nText) {
+  const cpuUnknown = text?.nodes.cpuUnknown ?? "CPU unknown";
+  const memoryUnknown = text?.nodes.memoryUnknown ?? "memory unknown";
+  const diskUnknown = text?.nodes.diskUnknown ?? "disk unknown";
+  const cpu = node.cpu_total > 0 ? `${node.committed_cpu}/${node.cpu_total} CPU` : cpuUnknown;
   const memoryTotalMb = Math.floor(node.memory_total / 1024 / 1024);
   const memory =
-    memoryTotalMb > 0 ? `${node.committed_memory_mb}/${memoryTotalMb} MB` : "memory unknown";
+    memoryTotalMb > 0 ? `${node.committed_memory_mb}/${memoryTotalMb} MB` : memoryUnknown;
   const diskTotalGb = Math.floor(node.disk_total / 1024 / 1024 / 1024);
-  const disk = diskTotalGb > 0 ? `${node.committed_disk_gb}/${diskTotalGb} GB` : "disk unknown";
+  const disk = diskTotalGb > 0 ? `${node.committed_disk_gb}/${diskTotalGb} GB` : diskUnknown;
   return `${cpu}, ${memory}, ${disk}`;
 }
 

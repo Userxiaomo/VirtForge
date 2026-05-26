@@ -166,6 +166,22 @@ nav button:hover {
   margin-top: auto;
 }
 
+.language-picker {
+  display: grid;
+  gap: 6px;
+  margin-top: 18px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.language-picker select {
+  min-height: 36px;
+  border-color: #334155;
+  background: #0f172a;
+  color: #f8fafc;
+}
+
 .content {
   display: grid;
   align-content: start;

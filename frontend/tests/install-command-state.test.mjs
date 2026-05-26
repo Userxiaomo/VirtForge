@@ -17,14 +17,14 @@ test("changing the selected install node clears the one-time install command", a
 test("install node picker has an explicit placeholder before selecting a node", async () => {
   const source = await readFile(controlPanelPath, "utf8");
 
-  assert.match(source, /<option value="">Select node<\/option>/);
+  assert.match(source, /<option value="">\{text\.install\.selectNode\}<\/option>/);
   assert.match(source, /disabled=\{!selectedNodeId\}/);
 });
 
 test("install node picker has an accessible name", async () => {
   const source = await readFile(controlPanelPath, "utf8");
 
-  assert.match(source, /aria-label="Agent install target node"/);
+  assert.match(source, /aria-label=\{text\.install\.targetAriaLabel\}/);
 });
 
 function extractFunction(source, declaration) {
